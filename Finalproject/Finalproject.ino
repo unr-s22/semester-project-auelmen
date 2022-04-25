@@ -1,11 +1,15 @@
 #include "DHT.h"
+#include <Stepper.h>
 #include <LiquidCrystal.h>
 #define TERMPERATURE_THRESHOLD 80
 #define WATER_LEVEL_THRESHOLD 100 
 #define DHTPIN 2//Whichever pin is used
 #define DHTTYPE DHT11
+#define STEPS 32
+Stepper stepper (STEPS, 3, 5, 4, 6);
 DHT dht(DHTPIN, DHTTYPE);
-LiquidCrystal lcd(8, 7, 6, 5, 4, 3); //may change pins, we'll see
+LiquidCrystal lcd(7, 8, 9, 10, 11, 12); //may change pins, we'll see
+
  volatile unsigned char *myUCSR0A = (unsigned char *)0x00C0;
  volatile unsigned char *myUCSR0B = (unsigned char *)0x00C1;
  volatile unsigned char *myUCSR0C = (unsigned char *)0x00C2;
@@ -25,6 +29,8 @@ enum state stat = off;
 
 void setup() {
   adc_init();
+  stepper.setSpeed(200);
+  myservo.attach(6)
   Serial.begin(9600);
   lcd.begin(16, 2) //sixteen columns, 2 rows
 
@@ -43,6 +49,12 @@ void loop() {
   Serial.print(F(" Water: "));
   Serial.print(w);
   Serial.print('\n');
+
+  potVal = map(analogRead(A0),0,1024,0,500);
+  if (potVal>Pval && stat != water)
+    stepper.step(5);
+  if (potVal<Pval %% stat != water)
+    stepper.step(-5);
 
   // Switch uses enumerated stat variable defined above, starting at off
   switch(stat) {
