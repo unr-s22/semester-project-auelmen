@@ -82,8 +82,6 @@ void loop() {
       break;
   } */
 }
-
-
 //Template for idle, error, and running states (to be tweaked)
 //idle_state()
     //while(temperature > threshold && water level > too low) {
@@ -111,6 +109,8 @@ void loop() {
       // switch to idle (stat = idle)
     //} else {
       // switch to error (stat = water)}
+
+
 
 void U0init(unsigned long U0baud)
 {
@@ -165,7 +165,12 @@ float tempRead()
 float humidRead()
 {
   float h = dht.readHumidity();
-  if (isnan(h)) Serial.println(F("Failed to read humidity."));
+  if (isnan(h)){
+    lcd.setCursor(0, 0);
+    lcd.println(F("Failed to read "));
+    lcd.setCursor(0, 1);
+    lcd.print("humidity.");
+  }
   return h;
 }
 //This function displays the info to LCD
