@@ -5,7 +5,7 @@
 #define WATER_LEVEL_THRESHOLD 100 
 #define DHTPIN 2//Whichever pin is used
 #define DHTTYPE DHT11
-#define STEPS 32
+#define STEPS 30
 Stepper stepper (STEPS, 3, 5, 4, 6);
 DHT dht(DHTPIN, DHTTYPE);
 LiquidCrystal lcd(7, 8, 9, 10, 11, 12); //may change pins, we'll see
@@ -16,7 +16,7 @@ unsigned char WATER_LEVEL_PORT = 0;
  volatile unsigned int  *myUBRR0  = (unsigned int *) 0x00C4;
  volatile unsigned char *myUDR0   = (unsigned char *)0x00C6;
 int potVal = 0;
-int Pval = 0;
+int previous =0;
 
 
 enum state {
@@ -32,12 +32,13 @@ void setup() {
 //  adc_init();
   stepper.setSpeed(200);
   U0init(9600);
+  Serial.begin(9600);
   lcd.begin(16, 2); //sixteen columns, 2 rows
 
 }
 
 void loop() {
-  delay(1000);
+  //delay(1000);
   unsigned int w = read_adc(WATER_LEVEL_PORT);
   float temperature = tempRead();
   float humid = humidRead();// put your main code here, to run repeatedly:
@@ -49,16 +50,15 @@ void loop() {
   Serial.print(F(" Water: "));
   Serial.print(w);
   Serial.print('\n');
+  int val = read_adc(1);
 
-  potVal = map(analogRead(A1),0,1024,0,500);
-  if (potVal>Pval && stat != water)
-  {
-    stepper.step(5);
-  }
-  if (potVal<Pval && stat != water)
-  {
-    stepper.step(-5);
-  }
+  // move a number of steps equal to the change in the
+  // sensor reading
+  stepper.step(val - previous);
+
+  // remember the previous value of the sensor
+  previous = val;
+  Serial.print(val);
 
   // Switch uses enumerated stat variable defined above, starting at off
  /* switch(stat) {
