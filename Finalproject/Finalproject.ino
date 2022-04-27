@@ -9,13 +9,14 @@
 Stepper stepper (STEPS, 3, 5, 4, 6);
 DHT dht(DHTPIN, DHTTYPE);
 LiquidCrystal lcd(7, 8, 9, 10, 11, 12); //may change pins, we'll see
-
+unsigned char WATER_LEVEL_PORT = 0;
  volatile unsigned char *myUCSR0A = (unsigned char *)0x00C0;
  volatile unsigned char *myUCSR0B = (unsigned char *)0x00C1;
  volatile unsigned char *myUCSR0C = (unsigned char *)0x00C2;
  volatile unsigned int  *myUBRR0  = (unsigned int *) 0x00C4;
  volatile unsigned char *myUDR0   = (unsigned char *)0x00C6;
-
+int potVal = 0;
+int Pval = 0;
 
 
 enum state {
@@ -28,36 +29,39 @@ enum state {
 enum state stat = off;
 
 void setup() {
-  adc_init();
+//  adc_init();
   stepper.setSpeed(200);
-  myservo.attach(6)
-  Serial.begin(9600);
-  lcd.begin(16, 2) //sixteen columns, 2 rows
+  U0init(9600);
+  lcd.begin(16, 2); //sixteen columns, 2 rows
 
 }
 
 void loop() {
   delay(1000);
-  unsigned int w = adc_read(WATER_LEVEL_PORT);
-  float temperature = tempRead(true);
+  unsigned int w = read_adc(WATER_LEVEL_PORT);
+  float temperature = tempRead();
   float humid = humidRead();// put your main code here, to run repeatedly:
 
   Serial.print(F("Humidity: "));
-  Serial.print(h);
+  Serial.print(humid);
   Serial.print(F("%  Temperature: "));
-  Serial.print(f);
+  Serial.print(temperature);
   Serial.print(F(" Water: "));
   Serial.print(w);
   Serial.print('\n');
 
-  potVal = map(analogRead(A0),0,1024,0,500);
+  potVal = map(analogRead(A1),0,1024,0,500);
   if (potVal>Pval && stat != water)
+  {
     stepper.step(5);
-  if (potVal<Pval %% stat != water)
+  }
+  if (potVal<Pval && stat != water)
+  {
     stepper.step(-5);
+  }
 
   // Switch uses enumerated stat variable defined above, starting at off
-  switch(stat) {
+ /* switch(stat) {
     case off:
       Serial.println("Disabled State");
       disabled_state();
@@ -76,15 +80,31 @@ void loop() {
       break;
     default:
       break;
-  }
+  } */
 }
 
+
+
+
+void U0init(unsigned long U0baud)
+{
+// Students are responsible for understanding
+// this initialization code for the ATmega2560 USART0
+// and will be expected to be able to intialize
+// the USART in differrent modes.
+//
+unsigned long FCPU = 16000000;
+unsigned int tbaud;
+tbaud = (FCPU / 16 / U0baud - 1);
+// Same as (FCPU / (16 * U0baud)) - 1;
+*myUCSR0A = 0x20;
+*myUCSR0B = 0x18;
+*myUCSR0C = 0x06;
+*myUBRR0 = tbaud;
 }
 
-
-
-
-void adc_init(void){
+void adc_init(void)
+{
  
 //16MHz/128 = 125kHz the ADC reference clock
  
@@ -96,7 +116,15 @@ ADCSRA |= (1<<ADEN);       //Turn on ADC
  
 ADCSRA |= (1<<ADSC); 
 } 
-
+uint16_t read_adc(uint8_t channel)
+{
+  ADMUX &= 0xE0; //Clear bits MUX0-4
+  ADMUX |= channel&0x07; //Defines the new ADC channel to be read by setting bits MUX0-2
+  ADCSRB = channel&(1<<3); //Set MUX5
+  ADCSRA |= (1<<ADSC); //Starts a new conversion
+  while(ADCSRA & (1<<ADSC)); //Wait until the conversion is done
+  return ADCW;
+}
 
 // This function reads temperature from DHT Sensor
 float tempRead() 
