@@ -81,7 +81,33 @@ void loop() {
 
 }
 
+//Template for idle, error, and running states (to be tweaked)
+//idle_state()
+    //while(temperature > threshold && water level > too low) {
+      // GREEN LED is ON 
+      // check temperature 
+      // check water level
+      // print transition times }
+    //if (temperature < threshold && water level > too low) {
+      // switch to running (stat = temp)
+      //} else {
+      // switch to error (stat = water)}
 
+//error_state()
+    // while(reset = not pressed && water < too low){
+      // motor is OFF
+      // RED LED is ON (other LEDS are OFF)
+      // print on LCD ("Error")}
+    //switch to idle (stat = idle)
+  
+//running_state()
+    //while(temperature < threshold && water > too low) {
+      // motor is ON
+      // BLUE LED is ON (other LEDS are OFF)}
+    //if (temperature > threshold && water level > too low) {
+      // switch to idle (stat = idle)
+    //} else {
+      // switch to error (stat = water)}
 
 
 void adc_init(void){
