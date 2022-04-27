@@ -3,7 +3,7 @@
 #include <LiquidCrystal.h>
 #define TERMPERATURE_THRESHOLD 80
 #define WATER_LEVEL_THRESHOLD 100 
-#define DHTPIN 2//Whichever pin is used
+#define DHTPIN 2 //Whichever pin is used
 #define DHTTYPE DHT11
 #define STEPS 30
 Stepper stepper (STEPS, 3, 5, 4, 6);
@@ -32,6 +32,7 @@ void setup() {
 //  adc_init();
   stepper.setSpeed(200);
   U0init(9600);
+  dht.begin();
   Serial.begin(9600);
   lcd.begin(16, 2); //sixteen columns, 2 rows
 
@@ -39,10 +40,9 @@ void setup() {
 
 void loop() {
   //delay(1000);
-  unsigned int w = read_adc(WATER_LEVEL_PORT);
+  int w = read_adc(WATER_LEVEL_PORT);
   float temperature = tempRead();
   float humid = humidRead();// put your main code here, to run repeatedly:
-
   Serial.print(F("Humidity: "));
   Serial.print(humid);
   Serial.print(F("%  Temperature: "));
@@ -58,7 +58,7 @@ void loop() {
 
   // remember the previous value of the sensor
   previous = val;
-  Serial.print(val);
+  Serial.print(val); 
 
   // Switch uses enumerated stat variable defined above, starting at off
  /* switch(stat) {
@@ -119,29 +119,29 @@ void U0init(unsigned long U0baud)
 // and will be expected to be able to intialize
 // the USART in differrent modes.
 //
-unsigned long FCPU = 16000000;
-unsigned int tbaud;
-tbaud = (FCPU / 16 / U0baud - 1);
+  unsigned long FCPU = 16000000;
+  unsigned int tbaud;
+  tbaud = (FCPU / 16 / U0baud - 1);
 // Same as (FCPU / (16 * U0baud)) - 1;
-*myUCSR0A = 0x20;
-*myUCSR0B = 0x18;
-*myUCSR0C = 0x06;
-*myUBRR0 = tbaud;
+  *myUCSR0A = 0x20;
+  *myUCSR0B = 0x18;
+  *myUCSR0C = 0x06;
+  *myUBRR0 = tbaud;
 }
 
 void adc_init(void)
 {
  
 //16MHz/128 = 125kHz the ADC reference clock
- 
 ADCSRA |= ((1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0));
  
 ADMUX |= (1<<REFS0);       //Set Voltage reference to Avcc (5v)
  
 ADCSRA |= (1<<ADEN);       //Turn on ADC
  
-ADCSRA |= (1<<ADSC); 
-} 
+ADCSRA |= (1<<ADSC);
+}
+
 uint16_t read_adc(uint8_t channel)
 {
   ADMUX &= 0xE0; //Clear bits MUX0-4
@@ -149,7 +149,7 @@ uint16_t read_adc(uint8_t channel)
   ADCSRB = channel&(1<<3); //Set MUX5
   ADCSRA |= (1<<ADSC); //Starts a new conversion
   while(ADCSRA & (1<<ADSC)); //Wait until the conversion is done
-  return ADCW;
+  return ADCW; 
 }
 
 // This function reads temperature from DHT Sensor
