@@ -40,16 +40,18 @@ void setup() {
   lcd.begin(16, 2); //sixteen columns, 2 rows
   *ddr_c = 0xF0;
   *port_c = 0b00000001;
-
+  EICRA |= (1 << ISC11);
+  EIMSK |= (1 << INT0);
 }
 
 void loop() {
+  //delay(100);
   if (ISRReset) {
         Serial.print("Interrupt ");
         Serial.println(ISRReset);
         ISRReset=0;
   }
-  int w = read_adc(WATER_LEVEL_PORT);
+  unsigned int w = read_adc(WATER_LEVEL_PORT);
   float temperature = tempRead();
   float humid = humidRead();// put your main code here, to run repeatedly:
   Serial.print(F("Humidity: "));
@@ -59,16 +61,16 @@ void loop() {
   Serial.print(F(" Water: "));
   Serial.print(w);
   Serial.print('\n');
-  int val = read_adc(1);
-  lcd_th();
+//  int val = read_adc(1);
+  lcd_th(temperature, humid);
 
   // move a number of steps equal to the change in the
   // sensor reading
-  stepper.step(val - previous);
+  //stepper.step(val - previous);
 
   // remember the previous value of the sensor
-  previous = val;
-  Serial.print(val); 
+ // previous = val;
+  //Serial.print(val); 
 
   // Switch uses enumerated stat variable defined above, starting at off
  /* switch(stat) {
@@ -132,7 +134,7 @@ void loop() {
       // switch to error (stat = water)}
 
 ISR(INT0_vect) {
-    IntButtonCalled = 1;
+    ISRReset = 1;
     stat = off;
 }
 
@@ -153,28 +155,25 @@ void U0init(unsigned long U0baud)
   *myUBRR0 = tbaud;
 }
 
-void adc_init(void)
-{
+void adc_init(void){
  
 //16MHz/128 = 125kHz the ADC reference clock
+ 
 ADCSRA |= ((1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0));
  
 ADMUX |= (1<<REFS0);       //Set Voltage reference to Avcc (5v)
  
 ADCSRA |= (1<<ADEN);       //Turn on ADC
  
-ADCSRA |= (1<<ADSC);
-}
+ADCSRA |= (1<<ADSC); } 
 
-uint16_t read_adc(uint8_t channel)
-{
-  ADMUX &= 0xE0; //Clear bits MUX0-4
-  ADMUX |= channel&0x07; //Defines the new ADC channel to be read by setting bits MUX0-2
-  ADCSRB = channel&(1<<3); //Set MUX5
-  ADCSRA |= (1<<ADSC); //Starts a new conversion
-  while(ADCSRA & (1<<ADSC)); //Wait until the conversion is done
-  return ADCW; 
-}
+uint16_t read_adc(uint8_t channel){
+ADMUX &= 0xE0;           //Clear bits MUX0-4
+ADMUX |= channel&0x07;   //Defines the new ADC channel to be read by setting bits MUX0-2
+ADCSRB = channel&(1<<3); //Set MUX5
+ADCSRA |= (1<<ADSC);      //Starts a new conversion
+while(ADCSRA & (1<<ADSC));  //Wait until the conversion is done
+return ADCW;} 
 
 // This function reads temperature from DHT Sensor
 float tempRead() 
@@ -197,6 +196,7 @@ float humidRead()
   }
   return h;
 }
+
 //This function displays the info to LCD
 void lcd_th(float t, float h) {
   lcd.setCursor(0, 0);
@@ -205,4 +205,5 @@ void lcd_th(float t, float h) {
   lcd.print(t);
   lcd.setCursor(7, 1);
   lcd.print(h);
+  lcd.print("%");
 }
