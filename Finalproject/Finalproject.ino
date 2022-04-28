@@ -38,8 +38,8 @@ void setup() {
   dht.begin();
   Serial.begin(9600);
   lcd.begin(16, 2); //sixteen columns, 2 rows
-  *ddr_c = 0xFF;
-  *port_c = 0x00;
+  *ddr_c = 0xF0;
+  *port_c = 0b00000001;
 
 }
 
@@ -60,6 +60,7 @@ void loop() {
   Serial.print(w);
   Serial.print('\n');
   int val = read_adc(1);
+  lcd_th();
 
   // move a number of steps equal to the change in the
   // sensor reading
