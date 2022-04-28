@@ -15,6 +15,9 @@ unsigned char WATER_LEVEL_PORT = 0;
  volatile unsigned char *myUCSR0C = (unsigned char *)0x00C2;
  volatile unsigned int  *myUBRR0  = (unsigned int *) 0x00C4;
  volatile unsigned char *myUDR0   = (unsigned char *)0x00C6;
+ volatile unsigned char *port_c = (unsigned char *) 0x28;
+ volatile unsigned char *ddr_c = (unsigned char *) 0x27;
+ volatile unsigned char *pin_c = (unsigned char *) 0x26;
 int potVal = 0;
 int previous =0;
 
@@ -27,7 +30,7 @@ enum state {
 };
 
 enum state stat = off;
-
+volatile int ISRReset = 0;
 void setup() {
 //  adc_init();
   stepper.setSpeed(200);
@@ -35,11 +38,17 @@ void setup() {
   dht.begin();
   Serial.begin(9600);
   lcd.begin(16, 2); //sixteen columns, 2 rows
+  *ddr_c = 0xFF;
+  *port_c = 0x00;
 
 }
 
 void loop() {
-  //delay(1000);
+  if (ISRReset) {
+        Serial.print("Interrupt ");
+        Serial.println(ISRReset);
+        ISRReset=0;
+  }
   int w = read_adc(WATER_LEVEL_PORT);
   float temperature = tempRead();
   float humid = humidRead();// put your main code here, to run repeatedly:
@@ -81,6 +90,17 @@ void loop() {
     default:
       break;
   } */
+
+  /* 57 PC4 ( A12 ) Digital pin 33
+58  PC5 ( A13 ) Digital pin 32
+59  PC6 ( A14 ) Digital pin 31
+60  PC7 ( A15 ) Digital pin 30
+*port_c = 0b00010000
+*port_c = 0b00100000
+*port_c = 0b01000000
+*port_c = 0b10000000
+
+*/
 }
 //Template for idle, error, and running states (to be tweaked)
 //idle_state()
@@ -110,7 +130,10 @@ void loop() {
     //} else {
       // switch to error (stat = water)}
 
-
+ISR(INT0_vect) {
+    IntButtonCalled = 1;
+    stat = off;
+}
 
 void U0init(unsigned long U0baud)
 {
