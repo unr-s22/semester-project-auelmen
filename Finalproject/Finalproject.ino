@@ -1,20 +1,20 @@
 #include "DHT.h"
 #include <Stepper.h>
 #include <LiquidCrystal.h>
-#define TERMPERATURE_THRESHOLD 80
+#define TEMPERATURE_THRESHOLD 65
 #define WATER_LEVEL_THRESHOLD 100 
 #define DHTPIN 2 //Whichever pin is used
 #define DHTTYPE DHT11
 #define STEPS 30
+
 Stepper stepper (STEPS, 3, 5, 4, 6);
 DHT dht(DHTPIN, DHTTYPE);
 LiquidCrystal lcd(7, 8, 9, 10, 11, 12); //may change pins, we'll see
 unsigned char WATER_LEVEL_PORT = 0;
- volatile unsigned char *myUCSR0A = (unsigned char *)0x00C0;
- volatile unsigned char *myUCSR0B = (unsigned char *)0x00C1;
- volatile unsigned char *myUCSR0C = (unsigned char *)0x00C2;
- volatile unsigned int  *myUBRR0  = (unsigned int *) 0x00C4;
- volatile unsigned char *myUDR0   = (unsigned char *)0x00C6;
+volatile unsigned char* my_ADMUX = (unsigned char*) 0x7C;
+volatile unsigned char* my_ADCSRB = (unsigned char*) 0x7B;
+volatile unsigned char* my_ADCSRA = (unsigned char*) 0x7A;
+volatile unsigned int* my_ADC_DATA = (unsigned int*) 0x78;
  volatile unsigned char *port_c = (unsigned char *) 0x28;
  volatile unsigned char *ddr_c = (unsigned char *) 0x27;
  volatile unsigned char *pin_c = (unsigned char *) 0x26;
@@ -34,7 +34,6 @@ volatile int ISRReset = 0;
 void setup() {
 //  adc_init();
   stepper.setSpeed(200);
-  U0init(9600);
   dht.begin();
   Serial.begin(9600);
   lcd.begin(16, 2); //sixteen columns, 2 rows
@@ -133,47 +132,148 @@ void loop() {
     //} else {
       // switch to error (stat = water)}
 
-ISR(INT0_vect) {
-    ISRReset = 1;
-    stat = off;
+void disabled_state() { // Or off state
+  lcd.clear();
+  lcd.noDisplay();
+
+  *port_c &= 0b00000000; // Turn off all LEDs
+  *port_c |= 0b00001000; // Turn on Yellow LED
+  
+  while ( !stat) { }
+
+  // Start button pressed and initialize idle state.
+  stat = idle;
+  lcd.display();
 }
 
-void U0init(unsigned long U0baud)
+void idle_state() {
+  *port_c |= 0b01000000; // Turn on green LED
+  *port_c &= 0b01000000; // Turn off other LEDs & fan
+  
+  // Get water level, temperature, and humidity
+  unsigned int w = water_level();
+  float t = tempRead();
+  float h = humidRead();
+
+  // Display temperature and humidity to screen
+  lcd_th(t, h);
+
+  // Check water level.
+  if (w < WATER_LEVEL_THRESHOLD) stat = water;
+  
+  // Check temperature.
+  else if (t > TEMPERATURE_THRESHOLD) stat = temp;
+}
+
+void error_state() {
+  *port_c |= 0b000100000; // Turn on red LED
+  *port_c &= 0b000100000; // Turn off other LEDs
+  
+  lcd.clear();
+  lcd.print("Low Water");
+
+  unsigned int w = water_level();
+
+  // Wait for water level to increase
+  while (w < WATER_LEVEL_THRESHOLD) {
+    delay(1000);
+    w = water_level();
+    lcd.setCursor(0, 1);
+    lcd.print("Level:");
+    lcd.setCursor(7, 1);
+    lcd.print(w);
+}
+  
+  // Water level is now okay
+  stat = idle;
+  lcd.clear();
+}
+
+void running_state()
 {
-// Students are responsible for understanding
-// this initialization code for the ATmega2560 USART0
-// and will be expected to be able to intialize
-// the USART in differrent modes.
-//
-  unsigned long FCPU = 16000000;
-  unsigned int tbaud;
-  tbaud = (FCPU / 16 / U0baud - 1);
-// Same as (FCPU / (16 * U0baud)) - 1;
-  *myUCSR0A = 0x20;
-  *myUCSR0B = 0x18;
-  *myUCSR0C = 0x06;
-  *myUBRR0 = tbaud;
+  *port_c |= 0b10000000; // Enable fan and running LED
+  *port_c &= 0b10000000; // Disable other LEDs
+  float f = tempRead();
+  float h = humidRead();
+
+  // Check water level and temperature
+  if (water_level() < WATER_LEVEL_THRESHOLD) stat = water;
+  else if ( f > TEMPERATURE_THRESHOLD ) {
+    delay(1000);
+    Serial.print("Temp: ");
+    Serial.print(f);
+    Serial.print('\n');
+    lcd_th(f, h);
+    return running_state();
+  }
+  else {
+    lcd.clear();
+    stat = idle;
+  }
 }
 
-void adc_init(void){
- 
-//16MHz/128 = 125kHz the ADC reference clock
- 
-ADCSRA |= ((1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0));
- 
-ADMUX |= (1<<REFS0);       //Set Voltage reference to Avcc (5v)
- 
-ADCSRA |= (1<<ADEN);       //Turn on ADC
- 
-ADCSRA |= (1<<ADSC); } 
+ISR(INT0_vect) {
+  ISRReset = 1;
+  if (stat) { // We are in a non-off state.
+    Serial.println("Turning Off");
+    stat = off;
+  }
+  else { // We are off so turn on.
+    Serial.println("Turning On");
+    stat = idle;
+  }
+}
 
-uint16_t read_adc(uint8_t channel){
-ADMUX &= 0xE0;           //Clear bits MUX0-4
-ADMUX |= channel&0x07;   //Defines the new ADC channel to be read by setting bits MUX0-2
-ADCSRB = channel&(1<<3); //Set MUX5
-ADCSRA |= (1<<ADSC);      //Starts a new conversion
-while(ADCSRA & (1<<ADSC));  //Wait until the conversion is done
-return ADCW;} 
+
+unsigned int water_level() {
+  return read_adc(WATER_LEVEL_PORT);
+}
+void adc_init() {
+  *my_ADCSRA |= 0b10000000; // sets bit 7 which is ADEN
+  // clear bit 5 and bit 3 and bits 2:0 to 0 to disable the ADC trigger mode, the ADC interrupt, and to set prescaler mode to slow reading
+  *my_ADCSRA &= 0b11010000;
+  *my_ADCSRB &= 0b11110000;
+  *my_ADMUX &= 0b01111111;
+  // set bit   6 to 1 for AVCC analog reference'
+  *my_ADMUX |= 0b01000000;
+  // clear bit 5 to 0 for right adjust result
+  *my_ADMUX &= 0b11011111;
+  *my_ADMUX &= 0b11011111;
+  // clear bit 5 to 0 for right adjust result
+
+  // clear bit 4-0 to 0 to reset the channel and gain bits
+  *my_ADMUX &= 0b11100000;
+}
+
+unsigned int read_adc(unsigned char adc_channel_num) {
+  *my_ADMUX &= 0b11100000;
+  // clear the channel selection bits (MUX 4:0)
+
+  // clear the channel selection bits (MUX 5) bit 3 in ADCSRB
+  *my_ADCSRB &= 0b11110111; 
+  
+  // set the channel number
+  if (adc_channel_num > 7) {
+    *my_ADCSRB |= 0b00001000;
+    adc_channel_num -= 8;
+  }
+  
+  // set the channel selection bits, but remove the most significant bit (bit 3)
+  //my_ADMUX &= 0xF7;
+
+
+  // set the channel selection bits
+  *my_ADMUX += adc_channel_num;
+  
+  // set bit 6 of ADCSRA to 1 to start a conversion
+  *my_ADCSRA |= 0b01000000;
+
+  // wait for the conversion to complete
+  while ((*my_ADCSRA & 0x40) != 0);
+  
+  // return the result in the ADC data register
+  return *my_ADC_DATA;
+}
 
 // This function reads temperature from DHT Sensor
 float tempRead() 
