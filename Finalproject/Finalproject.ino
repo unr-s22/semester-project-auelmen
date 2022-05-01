@@ -15,9 +15,12 @@ volatile unsigned char* my_ADMUX = (unsigned char*) 0x7C;
 volatile unsigned char* my_ADCSRB = (unsigned char*) 0x7B;
 volatile unsigned char* my_ADCSRA = (unsigned char*) 0x7A;
 volatile unsigned int* my_ADC_DATA = (unsigned int*) 0x78;
- volatile unsigned char *port_c = (unsigned char *) 0x28;
- volatile unsigned char *ddr_c = (unsigned char *) 0x27;
- volatile unsigned char *pin_c = (unsigned char *) 0x26;
+volatile unsigned char *port_c = (unsigned char *) 0x28;
+volatile unsigned char *ddr_c = (unsigned char *) 0x27;
+volatile unsigned char *pin_c = (unsigned char *) 0x26;
+volatile unsigned char* port_b = (unsigned char*) 0x25; 
+volatile unsigned char* ddr_b  = (unsigned char*) 0x24; 
+volatile unsigned char* pin_b  = (unsigned char*) 0x23; 
 int potVal = 0;
 int previous =0;
 
@@ -30,22 +33,27 @@ enum state {
 };
 
 enum state stat = off;
-volatile int ISRReset = 0;
+volatile bool ISRReset = 0;
+
 void setup() {
 //  adc_init();
   stepper.setSpeed(200);
   dht.begin();
   Serial.begin(9600);
   lcd.begin(16, 2); //sixteen columns, 2 rows
-  *ddr_c = 0xF0;
-  *port_c = 0b00000001;
-  EICRA |= (1 << ISC11);
-  EIMSK |= (1 << INT0);
+  *ddr_c = 0xFF;
+  *port_c = 0x00;
+  //EICRA |= (1 << ISC10);
+  //EIMSK |= (1 << INT0);
+  *ddr_b = 0x01;
+  PCICR |= (1 << PCIE2);
+  
+  PCMSK2 |= (1 << PCINT16);
 }
 
 void loop() {
-  //delay(100);
-  if (ISRReset) {
+  delay(100);
+  if (ISRReset == 1) {
         Serial.print("Interrupt ");
         Serial.println(ISRReset);
         ISRReset=0;
@@ -60,8 +68,8 @@ void loop() {
   Serial.print(F(" Water: "));
   Serial.print(w);
   Serial.print('\n');
-//  int val = read_adc(1);
   lcd_th(temperature, humid);
+//  int val = read_adc(1);
 
   // move a number of steps equal to the change in the
   // sensor reading
@@ -72,7 +80,7 @@ void loop() {
   //Serial.print(val); 
 
   // Switch uses enumerated stat variable defined above, starting at off
- /* switch(stat) {
+  switch(stat) {
     case off:
       Serial.println("Disabled State");
       disabled_state();
@@ -91,7 +99,7 @@ void loop() {
       break;
     default:
       break;
-  } */
+  }
 
   /* 57 PC4 ( A12 ) Digital pin 33
 58  PC5 ( A13 ) Digital pin 32
@@ -137,9 +145,9 @@ void disabled_state() { // Or off state
   lcd.noDisplay();
 
   *port_c &= 0b00000000; // Turn off all LEDs
-  *port_c |= 0b00001000; // Turn on Yellow LED
-  
-  while ( !stat) { }
+  *port_c |= 0x01 << 4;// Turn on Yellow LED
+  Serial.print(stat);
+  while (ISRReset != 1) { }
 
   // Start button pressed and initialize idle state.
   stat = idle;
@@ -191,30 +199,37 @@ void error_state() {
 
 void running_state()
 {
-  *port_c |= 0b10000000; // Enable fan and running LED
-  *port_c &= 0b10000000; // Disable other LEDs
+  *port_c |= 0b10001000; // Enable fan and running LED
+  *port_c &= 0b10001000; // Disable other LEDs
   float f = tempRead();
   float h = humidRead();
 
   // Check water level and temperature
   if (water_level() < WATER_LEVEL_THRESHOLD) stat = water;
-  else if ( f > TEMPERATURE_THRESHOLD ) {
+  else if ( f > TEMPERATURE_THRESHOLD && ISRReset == 0) {
     delay(1000);
+    lcd.clear();
     Serial.print("Temp: ");
     Serial.print(f);
     Serial.print('\n');
-    lcd_th(f, h);
+    //lcd_th(f, h);
     return running_state();
   }
-  else {
+  else if (ISRReset == 0){
     lcd.clear();
     stat = idle;
   }
+  else
+  {
+    lcd.clear();
+    stat = off;
+  }
 }
 
-ISR(INT0_vect) {
+ISR(PCINT2_vect) {
+  if (PINK & (1<<PK0)){
   ISRReset = 1;
-  if (stat) { // We are in a non-off state.
+  if (stat != off) { // We are in a non-off state.
     Serial.println("Turning Off");
     stat = off;
   }
@@ -222,7 +237,9 @@ ISR(INT0_vect) {
     Serial.println("Turning On");
     stat = idle;
   }
+  }
 }
+
 
 
 unsigned int water_level() {
