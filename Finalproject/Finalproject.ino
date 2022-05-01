@@ -72,7 +72,7 @@ void loop() {
   Serial.print('\n');
   if(loopStep)
   {
-    loopStep = 0;
+    loopStep = 0; 
     myStepper.step(2*stepsPerRevolution);
   }
 
