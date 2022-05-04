@@ -1,18 +1,20 @@
 #include "DHT.h"
+#include "RTClib.h"
+#include "String.h"
 #include <Stepper.h>
 #include <LiquidCrystal.h>
-#define TEMPERATURE_THRESHOLD 65
+#define TEMPERATURE_THRESHOLD 100
 #define WATER_LEVEL_THRESHOLD 300 
 #define DHTPIN 2 //Whichever pin is used
 #define DHTTYPE DHT11
 const int stepsPerRevolution = 300;  // change this to fit the number of steps per revolution
 // for your motor
-
+RTC_DS1307 rtc;
 // initialize the stepper library on pins 8 through 11:
 Stepper myStepper(stepsPerRevolution, 3, 5, 4, 6);
 DHT dht(DHTPIN, DHTTYPE);
 LiquidCrystal lcd(7, 8, 9, 10, 11, 12); //may change pins, we'll see
-unsigned char WATER_LEVEL_PORT = 1;
+unsigned char WATER_LEVEL_PORT = 0;
 volatile unsigned char *port_c = (unsigned char *) 0x28;
 volatile unsigned char *ddr_c = (unsigned char *) 0x27;
 volatile unsigned char *pin_c = (unsigned char *) 0x26;
@@ -35,22 +37,34 @@ volatile bool ISRReset = 0;
 volatile bool loopStep;
 
 void setup() {
-//  adc_init();
+  adc_init();
+  Serial.begin(9600);
+  if (! rtc.begin()) {
+   Serial.println("Couldn't find RTC");
+   while (1);
+ }
   myStepper.setSpeed(60);
   dht.begin();
-  Serial.begin(9600);
   lcd.begin(16, 2); //sixteen columns, 2 rows
   *ddr_c = 0xFF;
   *ddr_e = 0x00;
   *port_e = 0x00;
   *port_c = 0x00;
   PCICR |= (1 << PCIE0);
-  PCMSK0 |= (1 << PCINT0);
+  PCMSK0 |= (1 << PCINT1);
 
   PCICR |= (1 << PCIE2);
   
   PCMSK2 |= (1 << PCINT16);
-  analogRead(WATER_LEVEL_PORT);
+  //analogRead(WATER_LEVEL_PORT);
+  if (! rtc.isrunning()) {
+   Serial.println("RTC is NOT running!");
+   // following line sets the RTC to the date & time this sketch was compiled
+   rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+   // This line sets the RTC with an explicit date & time, for example to set
+   // January 21, 2014 at 3am you would call:
+   // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+ }
 }
 
 void loop() {
@@ -60,6 +74,20 @@ void loop() {
         Serial.println(ISRReset);
         ISRReset=0;
   }
+  DateTime now = rtc.now();
+  Serial.print("State changed to " + String(stat) + " at: ");
+  Serial.print(now.year(), DEC);
+  Serial.print('/');
+  Serial.print(now.month(), DEC);
+  Serial.print('/');
+  Serial.print(now.day(), DEC);
+  Serial.print(" ");
+  Serial.print(now.hour(), DEC);
+  Serial.print(':');
+  Serial.print(now.minute(), DEC);
+  Serial.print(':');
+  Serial.print(now.second(), DEC);
+  Serial.println();
   unsigned int w = read_adc(WATER_LEVEL_PORT);
   float temperature = tempRead();
   float humid = humidRead();// put your main code here, to run repeatedly:
@@ -110,8 +138,8 @@ void disabled_state() { // Or off state
   lcd.clear();
   lcd.noDisplay();
 
-  *port_c &= 0b00000000; // Turn off all LEDs
-  *port_c |= 0x01 << 4;// Turn on Yellow LED
+  *port_c &= 0b00000001; // Turn off all LEDs
+  *port_c |= 0b0010001;// Turn on Yellow LED
   Serial.print(stat);
   while (ISRReset != 1) { }
 
@@ -121,8 +149,8 @@ void disabled_state() { // Or off state
 }
 
 void idle_state() {
-  *port_c |= 0b01000000; // Turn on green LED
-  *port_c &= 0b01000000; // Turn off other LEDs & fan
+  *port_c |= 0b01000001; // Turn on green LED
+  *port_c &= 0b01000001; // Turn off other LEDs & fan
   
   // Get water level, temperature, and humidity
   unsigned int w = water_level();
@@ -140,8 +168,8 @@ void idle_state() {
 }
 
 void error_state() {
-  *port_c |= 0b000100000; // Turn on red LED
-  *port_c &= 0b000100000; // Turn off other LEDs
+  *port_c |= 0b000100001; // Turn on red LED
+  *port_c &= 0b000100001; // Turn off other LEDs
   
   lcd.clear();
   lcd.print("Low Water");
@@ -170,8 +198,8 @@ void error_state() {
 
 void running_state()
 {
-  *port_c |= 0b10001000; // Enable fan and running LED
-  *port_c &= 0b10001000; // Disable other LEDs
+  *port_c |= 0b10000000; // Enable fan and running LED
+  *port_c &= 0b10000000; // Disable other LEDs
   float f = tempRead();
   float h = humidRead();
 
@@ -209,9 +237,11 @@ ISR(PCINT2_vect) {
   }
   }
 }
-ISR(PCINT0_vect){
+ISR(PCINT1_vect){
+  Serial.println("Stepper");
   if(PINB & (1 << PB0)) {
     loopStep = 1;
+    Serial.println("Stepper");
 }
 }
 
